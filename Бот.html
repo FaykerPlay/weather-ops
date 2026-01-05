@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weather Ops</title>
 
+<!-- MGRS -->
+<script src="https://cdn.jsdelivr.net/npm/mgrs@1.0.0/dist/mgrs.min.js"></script>
+
 <style>
 :root{
   --bg:#0b0b0b;
@@ -14,97 +17,21 @@
   --danger:#8b0000;
   --warn:#8a6d00;
 }
-
-body{
-  margin:0;
-  background:var(--bg);
-  color:var(--text);
-  font-family: system-ui, Arial;
-}
-
-header{
-  padding:16px;
-  border-bottom:1px solid #222;
-}
-
-h1{
-  margin:0;
-  font-size:20px;
-  color:var(--yellow);
-}
-
-#controls{
-  padding:12px;
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-}
-
-input{
-  flex:1;
-  min-width:200px;
-  background:#000;
-  color:var(--text);
-  border:1px solid #333;
-  padding:10px;
-  border-radius:8px;
-  font-size:16px;
-}
-
-button{
-  background:var(--yellow);
-  color:#000;
-  border:none;
-  padding:10px 16px;
-  border-radius:8px;
-  font-size:16px;
-  font-weight:600;
-  cursor:pointer;
-}
-
-button.alt{
-  background:#222;
-  color:var(--yellow);
-  border:1px solid #333;
-}
-
-#selectors{
-  padding:10px;
-  display:flex;
-  gap:8px;
-}
-
-#out{
-  padding:12px;
-}
-
-.card{
-  background:var(--card);
-  border:1px solid #222;
-  border-radius:12px;
-  padding:12px;
-  margin-bottom:10px;
-}
-
-.card.critical{ background:var(--danger); }
-.card.warn{ background:var(--warn); }
-
-.time{
-  color:var(--yellow);
-  font-weight:600;
-}
-
-.small{
-  opacity:.9;
-  font-size:14px;
-}
-
-/* ===== PDF MODE ===== */
-@media print{
-  body{ background:#000; }
-  header, #controls, #selectors button { display:none; }
-  .card{ break-inside:avoid; }
-}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui}
+header{padding:14px;border-bottom:1px solid #222}
+h1{margin:0;color:var(--yellow);font-size:20px}
+#controls{padding:12px;display:flex;gap:8px;flex-wrap:wrap}
+input{flex:1;min-width:240px;background:#000;color:#fff;border:1px solid #333;padding:10px;border-radius:8px;font-size:16px}
+button{background:var(--yellow);color:#000;border:none;padding:10px 16px;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer}
+button.alt{background:#222;color:var(--yellow);border:1px solid #333}
+#selectors{padding:10px;display:none;gap:8px}
+#out{padding:12px}
+.card{background:var(--card);border:1px solid #222;border-radius:12px;padding:12px;margin-bottom:10px}
+.card.critical{background:var(--danger)}
+.card.warn{background:var(--warn)}
+.time{color:var(--yellow);font-weight:600}
+.small{font-size:14px;opacity:.9}
+@media print{header,#controls,#selectors{display:none}}
 </style>
 </head>
 
@@ -115,21 +42,20 @@ button.alt{
 </header>
 
 <div id="controls">
-  <input id="coords" placeholder="47.4850929, 34.4614691">
+  <input id="coords" placeholder="lat, lon або MGRS (36UWB1234567890)">
   <button onclick="loadWeather()">Оновити</button>
   <button onclick="savePDF()">📄 PDF</button>
 </div>
 
-<div id="selectors" style="display:none">
+<div id="selectors">
   <button class="alt" onclick="showType('FPV')">FPV</button>
   <button class="alt" onclick="showType('Mavic')">Mavic</button>
-  <button class="alt" onclick="showType('Крила')">Крило</button>
+  <button class="alt" onclick="showType('Крила')">Крила</button>
 </div>
 
 <div id="out"></div>
 
 <script>
-// ============ НАСТРОЙКИ ============
 const API_KEY = "dd4a4a999979668585619cc1bc113083";
 
 const ALT = {
@@ -141,13 +67,23 @@ const ALT = {
 let DATA=null;
 let LAST_HTML="";
 
-// ============ ЛОГІКА ============
 async function loadWeather(){
-  const c=document.getElementById("coords").value.split(",");
-  if(c.length!=2) return alert("Формат: lat, lon");
+  let input=document.getElementById("coords").value.trim();
+  let lat,lon;
 
-  const lat=c[0].trim();
-  const lon=c[1].trim();
+  if(/[A-Za-z]/.test(input)){
+    try{
+      const ll=mgrs.toPoint(input);
+      lon=ll[0]; lat=ll[1];
+    }catch{
+      alert("Невірний MGRS");
+      return;
+    }
+  }else{
+    const p=input.split(",");
+    if(p.length!=2){alert("Формат: lat, lon або MGRS");return;}
+    lat=parseFloat(p[0]); lon=parseFloat(p[1]);
+  }
 
   document.getElementById("out").innerHTML="⏳ Завантаження...";
   const url=`https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&units=metric&exclude=minutely,daily&appid=${API_KEY}`;
@@ -155,7 +91,7 @@ async function loadWeather(){
   DATA=await r.json();
 
   document.getElementById("selectors").style.display="flex";
-  document.getElementById("out").innerHTML="⬆️ Обери засіб";
+  document.getElementById("out").innerHTML=`📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>⬆️ Обери засіб`;
 }
 
 function status(w,g,r,v){
@@ -166,14 +102,12 @@ function status(w,g,r,v){
 
 function showType(type){
   const hours=[0,1,2,3,4];
-  const genTime=new Date().toLocaleString("uk-UA");
-
-  let html=`<h2 style="color:var(--yellow)">${type} — 5 год вперед</h2>
-  <div class="small">📍 ${document.getElementById("coords").value} | 🕒 ${genTime}</div><br>`;
+  let html=`<h2 style="color:var(--yellow)">${type} — 5 год вперед</h2>`;
+  const gen=new Date().toLocaleString("uk-UA");
 
   hours.forEach(h=>{
     const H=DATA.hourly[h];
-    const time=new Date(H.dt*1000).toLocaleTimeString("uk-UA",{hour:"2-digit",minute:"2-digit"});
+    const t=new Date(H.dt*1000).toLocaleTimeString("uk-UA",{hour:"2-digit",minute:"2-digit"});
 
     ALT[type].forEach(a=>{
       const w=H.wind_speed*a.m;
@@ -184,7 +118,7 @@ function showType(type){
 
       html+=`
       <div class="card ${s}">
-        <div class="time">${time} | ${a.h} м</div>
+        <div class="time">${t} | ${a.h} м</div>
         <div class="small">
           🌡️ ${H.temp.toFixed(1)}°C<br>
           💨 ${w.toFixed(1)} / ${g.toFixed(1)} м/с<br>
@@ -196,24 +130,13 @@ function showType(type){
     });
   });
 
-  LAST_HTML=html;
+  LAST_HTML=`<h2>${type}</h2><div class="small">🕒 ${gen}</div>`+html;
   document.getElementById("out").innerHTML=html;
 }
 
-// ============ PDF ============
 function savePDF(){
   const w=window.open("");
-  w.document.write(`
-  <html>
-  <head>
-    <title>Weather Ops — PDF</title>
-    <style>${document.querySelector("style").innerHTML}</style>
-  </head>
-  <body>${LAST_HTML}</body>
-  </html>
-  `);
-  w.document.close();
-  w.focus();
+  w.document.write(`<html><head><style>${document.querySelector("style").innerHTML}</style></head><body>${LAST_HTML}</body></html>`);
   w.print();
 }
 </script>
