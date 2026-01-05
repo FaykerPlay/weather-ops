@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weather Ops</title>
+
+<!-- MGRS -->
+<script src="https://cdn.jsdelivr.net/npm/mgrs@1.0.0/dist/mgrs.min.js"></script>
+
+<style>
+:root{
+  --bg:#0b0b0b;
+  --card:#141414;
+  --yellow:#f5c400;
+  --text:#f0f0f0;
+  --danger:#8b0000;
+  --warn:#8a6d00;
+}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui}
+header{padding:14px;border-bottom:1px solid #222}
+h1{margin:0;color:var(--yellow);font-size:20px}
+#controls{padding:12px;display:flex;gap:8px;flex-wrap:wrap}
+input{flex:1;min-width:240px;background:#000;color:#fff;border:1px solid #333;padding:10px;border-radius:8px;font-size:16px}
+button{background:var(--yellow);color:#000;border:none;padding:10px 16px;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer}
+button.alt{background:#222;color:var(--yellow);border:1px solid #333}
+#selectors{padding:10px;display:none;gap:8px}
+#out{padding:12px}
+.card{background:var(--card);border:1px solid #222;border-radius:12px;padding:12px;margin-bottom:10px}
+.card.critical{background:var(--danger)}
+.card.warn{background:var(--warn)}
+.time{color:var(--yellow);font-weight:600}
+.small{font-size:14px;opacity:.9}
+@media print{header,#controls,#selectors{display:none}}
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>🌦️ Weather Ops</h1>
+</header>
+
+<div id="controls">
+  <input id="coords" placeholder="lat, lon або MGRS (36UWB1234567890)">
+  <button onclick="loadWeather()">Оновити</button>
+  <button onclick="savePDF()">📄 PDF</button>
+</div>
+
+<div id="selectors">
+  <button class="alt" onclick="showType('FPV')">FPV</button>
+  <button class="alt" onclick="showType('Mavic')">Mavic</button>
+  <button class="alt" onclick="showType('Крила')">Крила</button>
+</div>
+
+<div id="out"></div>
+
+<script>
+const API_KEY = "dd4a4a999979668585619cc1bc113083";
+
+const ALT = {
+  FPV:[{h:100,m:1.2},{h:200,m:1.35}],
+  Mavic:[{h:200,m:1.35},{h:500,m:1.6}],
+  Крила:[{h:800,m:1.9},{h:1500,m:2.3}]
+};
+
+let DATA=null;
+let LAST_HTML="";
+
+async function loadWeather(){
+  let input=document.getElementById("coords").value.trim();
+  let lat,lon;
+
+  if(/[A-Za-z]/.test(input)){
+    try{
+      const ll=mgrs.toPoint(input);
+      lon=ll[0]; lat=ll[1];
+    }catch{
+      alert("Невірний MGRS");
+      return;
+    }
+  }else{
+    const p=input.split(",");
+    if(p.length!=2){alert("Формат: lat, lon або MGRS");return;}
+    lat=parseFloat(p[0]); lon=parseFloat(p[1]);
+  }
+
+  document.getElementById("out").innerHTML="⏳ Завантаження...";
+  const url=`https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&units=metric&exclude=minutely,daily&appid=${API_KEY}`;
+  const r=await fetch(url);
+  DATA=await r.json();
+
+  document.getElementById("selectors").style.display="flex";
+  document.getElementById("out").innerHTML=`📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>⬆️ Обери засіб`;
+}
+
+function status(w,g,r,v){
+  if(w>12||g>12||r>3||v<2000) return "critical";
+  if(w>8||g>8) return "warn";
+  return "";
+}
+
+function showType(type){
+  const hours=[0,1,2,3,4];
+  let html=`<h2 style="color:var(--yellow)">${type} — 5 год вперед</h2>`;
+  const gen=new Date().toLocaleString("uk-UA");
+
+  hours.forEach(h=>{
+    const H=DATA.hourly[h];
+    const t=new Date(H.dt*1000).toLocaleTimeString("uk-UA",{hour:"2-digit",minute:"2-digit"});
+
+    ALT[type].forEach(a=>{
+      const w=H.wind_speed*a.m;
+      const g=(H.wind_gust||H.wind_speed)*a.m;
+      const r=H.rain?.["1h"]||0;
+      const v=H.visibility||10000;
+      const s=status(w,g,r,v);
+
+      html+=`
+      <div class="card ${s}">
+        <div class="time">${t} | ${a.h} м</div>
+        <div class="small">
+          🌡️ ${H.temp.toFixed(1)}°C<br>
+          💨 ${w.toFixed(1)} / ${g.toFixed(1)} м/с<br>
+          🧭 ${H.wind_deg}°<br>
+          🌧️ ${r>0?r+" мм":"—"}<br>
+          <b>${s=="critical"?"🔴 НЕ МОЖНА":s=="warn"?"🟡 ОБМЕЖЕНО":"🟢 МОЖНА"}</b>
+        </div>
+      </div>`;
+    });
+  });
+
+  LAST_HTML=`<h2>${type}</h2><div class="small">🕒 ${gen}</div>`+html;
+  document.getElementById("out").innerHTML=html;
+}
+
+function savePDF(){
+  const w=window.open("");
+  w.document.write(`<html><head><style>${document.querySelector("style").innerHTML}</style></head><body>${LAST_HTML}</body></html>`);
+  w.print();
+}
+</script>
+
+</body>
+</html>
