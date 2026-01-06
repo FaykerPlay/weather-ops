@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weather Ops</title>
 
-<!-- MGRS -->
 <script src="https://cdn.jsdelivr.net/npm/mgrs@1.0.0/dist/mgrs.min.js"></script>
 
 <style>
@@ -56,12 +55,20 @@ button.alt{background:#222;color:var(--yellow);border:1px solid #333}
 <div id="out"></div>
 
 <script>
-const API_KEY = "dd4a4a999979668585619cc1bc113083";
+const API_KEY = "ВСТАВ_API_KEY_ТУТ";
 
+/* Висоти + коефіцієнти */
 const ALT = {
   FPV:[{h:100,m:1.2},{h:200,m:1.35}],
   Mavic:[{h:200,m:1.35},{h:500,m:1.6}],
   Крила:[{h:800,m:1.9},{h:1500,m:2.3}]
+};
+
+/* КРИТИЧНІ ЛІМІТИ ПО ВІТРУ (м/с) */
+const LIMITS = {
+  FPV:   { green:10, red:15 },
+  Mavic: { green:9,  red:13 },
+  Крила: { green:9,  red:13 }
 };
 
 let DATA=null;
@@ -76,7 +83,7 @@ async function loadWeather(){
       const ll=mgrs.toPoint(input);
       lon=ll[0]; lat=ll[1];
     }catch{
-      alert("Невірний MGRS");
+      alert("Невірний MGRS формат");
       return;
     }
   }else{
@@ -94,9 +101,13 @@ async function loadWeather(){
   document.getElementById("out").innerHTML=`📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>⬆️ Обери засіб`;
 }
 
-function status(w,g,r,v){
-  if(w>12||g>12||r>3||v<2000) return "critical";
-  if(w>8||g>8) return "warn";
+/* ОЦІНКА СТАТУСУ */
+function status(type, wind, gust, rain, vis){
+  const L = LIMITS[type];
+
+  if(rain > 3 || vis < 2000) return "critical";
+  if(wind > L.red || gust > L.red) return "critical";
+  if(wind > L.green || gust > L.green) return "warn";
   return "";
 }
 
@@ -110,20 +121,20 @@ function showType(type){
     const t=new Date(H.dt*1000).toLocaleTimeString("uk-UA",{hour:"2-digit",minute:"2-digit"});
 
     ALT[type].forEach(a=>{
-      const w=H.wind_speed*a.m;
-      const g=(H.wind_gust||H.wind_speed)*a.m;
-      const r=H.rain?.["1h"]||0;
-      const v=H.visibility||10000;
-      const s=status(w,g,r,v);
+      const wind=H.wind_speed*a.m;
+      const gust=(H.wind_gust||H.wind_speed)*a.m;
+      const rain=H.rain?.["1h"]||0;
+      const vis=H.visibility||10000;
+      const s=status(type, wind, gust, rain, vis);
 
       html+=`
       <div class="card ${s}">
         <div class="time">${t} | ${a.h} м</div>
         <div class="small">
           🌡️ ${H.temp.toFixed(1)}°C<br>
-          💨 ${w.toFixed(1)} / ${g.toFixed(1)} м/с<br>
-          🧭 ${H.wind_deg}°<br>
-          🌧️ ${r>0?r+" мм":"—"}<br>
+          💨 Вітер: ${wind.toFixed(1)} м/с<br>
+          🌪 Пориви: ${gust.toFixed(1)} м/с<br>
+          🌧 Опади: ${rain>0?rain+" мм":"—"}<br>
           <b>${s=="critical"?"🔴 НЕ МОЖНА":s=="warn"?"🟡 ОБМЕЖЕНО":"🟢 МОЖНА"}</b>
         </div>
       </div>`;
