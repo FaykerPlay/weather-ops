@@ -65,7 +65,7 @@ const ALT = {
   Крила:[{h:800,m:1.9},{h:1500,m:2.3}]
 };
 
-/* ЛІМІТИ ПО ВІТРУ (м/с) */
+/* Ліміти по вітру (м/с) */
 const LIMITS = {
   FPV:   { green:10, red:15 },
   Mavic: { green:9,  red:13 },
@@ -79,11 +79,14 @@ async function loadWeather(){
   let input=document.getElementById("coords").value.trim();
   let lat,lon;
 
-  // ===== MGRS =====
+  /* ===== MGRS (PHONE SAFE) ===== */
   if (/[A-Za-z]/.test(input)) {
     try {
-      // прибираємо пробіли, приводимо до верхнього регістру
-      const mgrsClean = input.replace(/\s+/g,"").toUpperCase();
+      // ПОВНА очистка: прибирає пробіли, невидимі символи, сміття з месенджерів
+      const mgrsClean = input
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, "");
+
       const ll = mgrs.toPoint(mgrsClean);
       lon = ll[0];
       lat = ll[1];
@@ -92,7 +95,7 @@ async function loadWeather(){
       return;
     }
   }
-  // ===== GPS =====
+  /* ===== GPS ===== */
   else {
     const p=input.split(",");
     if(p.length!=2){
@@ -112,55 +115,5 @@ async function loadWeather(){
   document.getElementById("out").innerHTML=`📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>⬆️ Обери засіб`;
 }
 
-/* СТАТУС */
-function status(type, wind, gust, rain, vis){
-  const L = LIMITS[type];
-  if(rain > 3 || vis < 2000) return "critical";
-  if(wind > L.red || gust > L.red) return "critical";
-  if(wind > L.green || gust > L.green) return "warn";
-  return "";
-}
-
-function showType(type){
-  const hours=[0,1,2,3,4];
-  let html=`<h2 style="color:var(--yellow)">${type} — 5 год вперед</h2>`;
-  const gen=new Date().toLocaleString("uk-UA");
-
-  hours.forEach(h=>{
-    const H=DATA.hourly[h];
-    const t=new Date(H.dt*1000).toLocaleTimeString("uk-UA",{hour:"2-digit",minute:"2-digit"});
-
-    ALT[type].forEach(a=>{
-      const wind=H.wind_speed*a.m;
-      const gust=(H.wind_gust||H.wind_speed)*a.m;
-      const rain=H.rain?.["1h"]||0;
-      const vis=H.visibility||10000;
-      const s=status(type, wind, gust, rain, vis);
-
-      html+=`
-      <div class="card ${s}">
-        <div class="time">${t} | ${a.h} м</div>
-        <div class="small">
-          🌡️ ${H.temp.toFixed(1)}°C<br>
-          💨 Вітер: ${wind.toFixed(1)} м/с<br>
-          🌪 Пориви: ${gust.toFixed(1)} м/с<br>
-          🌧 Опади: ${rain>0?rain+" мм":"—"}<br>
-          <b>${s=="critical"?"🔴 НЕ МОЖНА":s=="warn"?"🟡 ОБМЕЖЕНО":"🟢 МОЖНА"}</b>
-        </div>
-      </div>`;
-    });
-  });
-
-  LAST_HTML=`<h2>${type}</h2><div class="small">🕒 ${gen}</div>`+html;
-  document.getElementById("out").innerHTML=html;
-}
-
-function savePDF(){
-  const w=window.open("");
-  w.document.write(`<html><head><style>${document.querySelector("style").innerHTML}</style></head><body>${LAST_HTML}</body></html>`);
-  w.print();
-}
-</script>
-
-</body>
-</html>
+/* Статус */
+f
