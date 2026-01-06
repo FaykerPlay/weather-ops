@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weather Ops</title>
 
+<!-- MGRS -->
 <script src="https://cdn.jsdelivr.net/npm/mgrs@1.0.0/dist/mgrs.min.js"></script>
 
 <style>
@@ -41,7 +42,7 @@ button.alt{background:#222;color:var(--yellow);border:1px solid #333}
 </header>
 
 <div id="controls">
-  <input id="coords" placeholder="lat, lon або MGRS (36UWB1234567890)">
+  <input id="coords" placeholder="lat, lon або MGRS (36T XT 04257 49162)">
   <button onclick="loadWeather()">Оновити</button>
   <button onclick="savePDF()">📄 PDF</button>
 </div>
@@ -55,7 +56,7 @@ button.alt{background:#222;color:var(--yellow);border:1px solid #333}
 <div id="out"></div>
 
 <script>
-const API_KEY = "ВСТАВ_API_KEY_ТУТ";
+const API_KEY = "dd4a4a999979668585619cc1bc113083";
 
 /* Висоти + коефіцієнти */
 const ALT = {
@@ -64,7 +65,7 @@ const ALT = {
   Крила:[{h:800,m:1.9},{h:1500,m:2.3}]
 };
 
-/* КРИТИЧНІ ЛІМІТИ ПО ВІТРУ (м/с) */
+/* ЛІМІТИ ПО ВІТРУ (м/с) */
 const LIMITS = {
   FPV:   { green:10, red:15 },
   Mavic: { green:9,  red:13 },
@@ -78,18 +79,28 @@ async function loadWeather(){
   let input=document.getElementById("coords").value.trim();
   let lat,lon;
 
-  if(/[A-Za-z]/.test(input)){
-    try{
-      const ll=mgrs.toPoint(input);
-      lon=ll[0]; lat=ll[1];
-    }catch{
-      alert("Невірний MGRS формат");
+  // ===== MGRS =====
+  if (/[A-Za-z]/.test(input)) {
+    try {
+      // прибираємо пробіли, приводимо до верхнього регістру
+      const mgrsClean = input.replace(/\s+/g,"").toUpperCase();
+      const ll = mgrs.toPoint(mgrsClean);
+      lon = ll[0];
+      lat = ll[1];
+    } catch {
+      alert("Невірний формат MGRS");
       return;
     }
-  }else{
+  }
+  // ===== GPS =====
+  else {
     const p=input.split(",");
-    if(p.length!=2){alert("Формат: lat, lon або MGRS");return;}
-    lat=parseFloat(p[0]); lon=parseFloat(p[1]);
+    if(p.length!=2){
+      alert("Формат: lat, lon або MGRS");
+      return;
+    }
+    lat=parseFloat(p[0]);
+    lon=parseFloat(p[1]);
   }
 
   document.getElementById("out").innerHTML="⏳ Завантаження...";
@@ -101,10 +112,9 @@ async function loadWeather(){
   document.getElementById("out").innerHTML=`📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>⬆️ Обери засіб`;
 }
 
-/* ОЦІНКА СТАТУСУ */
+/* СТАТУС */
 function status(type, wind, gust, rain, vis){
   const L = LIMITS[type];
-
   if(rain > 3 || vis < 2000) return "critical";
   if(wind > L.red || gust > L.red) return "critical";
   if(wind > L.green || gust > L.green) return "warn";
