@@ -16,27 +16,17 @@
   --danger:#7a0000;
   --warn:#7a6400;
 }
-body{
-  margin:0;
-  background:var(--bg);
-  color:var(--text);
-  font-family:system-ui,-apple-system,Segoe UI,Roboto;
-}
-header{
-  padding:14px;
-  border-bottom:1px solid #222;
-}
-h1{
-  margin:0;
-  color:var(--yellow);
-  font-size:20px;
-}
-#controls{
-  padding:12px;
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui}
+header{padding:14px;border-bottom:1px solid #222}
+h1{margin:0;color:var(--yellow);font-size:20px}
+
+#controls,#types,#altitudes{
+  padding:10px;
   display:flex;
   gap:8px;
-  flex-wrap:wrap;
+  flex-wrap:wrap
 }
+
 input{
   flex:1;
   min-width:220px;
@@ -45,49 +35,60 @@ input{
   border:1px solid #333;
   padding:12px;
   border-radius:10px;
-  font-size:16px;
+  font-size:16px
 }
+
 button{
   background:var(--yellow);
   color:#000;
   border:none;
-  padding:12px 16px;
+  padding:10px 14px;
   border-radius:10px;
-  font-size:16px;
-  font-weight:700;
+  font-size:15px;
+  font-weight:700
 }
+
 button.alt{
   background:#1b1b1b;
   color:var(--yellow);
-  border:1px solid #333;
+  border:1px solid #333
 }
-#selectors{
-  padding:10px;
-  display:none;
-  gap:8px;
+
+button.active{
+  outline:2px solid var(--yellow)
 }
-#out{
-  padding:12px;
-}
+
+#out{padding:12px}
+
 .card{
   background:var(--card);
   border:1px solid #222;
   border-radius:14px;
   padding:12px;
-  margin-bottom:10px;
+  margin-bottom:10px
 }
+
 .card.critical{background:var(--danger)}
 .card.warn{background:var(--warn)}
+
 .time{
   color:var(--yellow);
-  font-weight:700;
+  font-weight:700
 }
+
 .small{
   font-size:14px;
-  line-height:1.4;
+  line-height:1.4
 }
+
+.windArrow{
+  display:inline-block;
+  transform-origin:center;
+  font-size:20px
+}
+
 @media print{
-  header,#controls,#selectors{display:none}
+  header,#controls,#types,#altitudes{display:none}
 }
 </style>
 </head>
@@ -99,69 +100,66 @@ button.alt{
 </header>
 
 <div id="controls">
-  <input
-    id="coords"
+  <input id="coords"
     placeholder="lat, lon або MGRS (36T XT 04257 49162)"
     inputmode="text"
     autocomplete="off"
     autocorrect="off"
     autocapitalize="characters"
-    spellcheck="false"
-  >
+    spellcheck="false">
   <button onclick="loadWeather()">Оновити</button>
   <button onclick="savePDF()">📄 PDF</button>
 </div>
 
-<div id="selectors">
-  <button class="alt" onclick="showType('FPV')">FPV</button>
-  <button class="alt" onclick="showType('Mavic')">Mavic</button>
-  <button class="alt" onclick="showType('Крила')">Крила</button>
+<div id="types" style="display:none">
+  <button class="alt" onclick="selectType('FPV',this)">FPV</button>
+  <button class="alt" onclick="selectType('Mavic',this)">Mavic</button>
+  <button class="alt" onclick="selectType('Крила',this)">Крила</button>
 </div>
 
+<div id="altitudes" style="display:none"></div>
 <div id="out"></div>
 
 <script>
 const API_KEY = "dd4a4a999979668585619cc1bc113083";
 
-/* висоти та коефіцієнти */
-const ALT = {
-  FPV:[{h:100,m:1.2},{h:200,m:1.35}],
-  Mavic:[{h:200,m:1.35},{h:500,m:1.6}],
-  Крила:[{h:800,m:1.9},{h:1500,m:2.3}]
-};
-
-/* ліміти по вітру */
+/* ліміти + коефіцієнти */
 const LIMITS = {
-  FPV:{green:10, red:15},
-  Mavic:{green:9, red:13},
-  Крила:{green:9, red:13}
+  FPV:{green:10, red:15, k:0.6},
+  Mavic:{green:9, red:13, k:0.7},
+  Крила:{green:9, red:13, k:0.9}
 };
 
 let DATA=null;
+let TYPE=null;
+let ALT=null;
 let LAST_HTML="";
+
+function windCoef(h,k){
+  return 1 + (h/1000)*k;
+}
+
+function windArrow(deg){
+  return `<span class="windArrow" style="transform:rotate(${deg}deg)">↑</span>`;
+}
 
 async function loadWeather(){
   let input=document.getElementById("coords").value.trim();
   let lat,lon;
 
-  // ===== MGRS (PHONE SAFE) =====
   if (/[A-Za-z]/.test(input)) {
-    try {
-      const mgrsClean = input
+    try{
+      const clean=input
         .normalize("NFKD")
         .toUpperCase()
         .replace(/[^A-Z0-9]/g,"");
-
-      const ll = mgrs.toPoint(mgrsClean);
-      lon = ll[0];
-      lat = ll[1];
-    } catch {
+      const ll=mgrs.toPoint(clean);
+      lon=ll[0]; lat=ll[1];
+    }catch{
       alert("Невірний формат координат");
       return;
     }
-  }
-  // ===== GPS =====
-  else {
+  } else {
     const p=input.split(",");
     if(p.length!==2){
       alert("Формат: lat, lon або MGRS");
@@ -172,58 +170,92 @@ async function loadWeather(){
   }
 
   document.getElementById("out").innerHTML="⏳ Завантаження...";
-  const url=`https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&units=metric&exclude=minutely,daily&appid=${API_KEY}`;
-  const r=await fetch(url);
+  const r=await fetch(
+    `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&units=metric&exclude=minutely,daily&appid=${API_KEY}`
+  );
   DATA=await r.json();
 
-  document.getElementById("selectors").style.display="flex";
-  document.getElementById("out").innerHTML=`📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}<br>⬆️ Обери засіб`;
+  document.getElementById("types").style.display="flex";
+  document.getElementById("out").innerHTML=`📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 }
 
-function status(type, wind, gust, rain, vis){
+function selectType(t,btn){
+  TYPE=t;
+  ALT=null;
+  document.querySelectorAll("#types button").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  buildAltButtons();
+  document.getElementById("out").innerHTML="⬆️ Обери ешелон";
+}
+
+function buildAltButtons(){
+  const a=document.getElementById("altitudes");
+  a.style.display="flex";
+  a.innerHTML="";
+  for(let h=0;h<=1500;h+=100){
+    const label=h===0?"На землі":h+" м";
+    const b=document.createElement("button");
+    b.className="alt";
+    b.textContent=label;
+    b.onclick=()=>selectAlt(h,b);
+    a.appendChild(b);
+  }
+}
+
+function selectAlt(h,btn){
+  ALT=h;
+  document.querySelectorAll("#altitudes button").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  showForecast();
+}
+
+function status(type,w,g,r,v){
   const L=LIMITS[type];
-  if(rain>3 || vis<2000) return "critical";
-  if(wind>L.red || gust>L.red) return "critical";
-  if(wind>L.green || gust>L.green) return "warn";
+  if(r>3||v<2000) return "critical";
+  if(w>L.red||g>L.red) return "critical";
+  if(w>L.green||g>L.green) return "warn";
   return "";
 }
 
-function showType(type){
-  let html=`<h2 style="color:var(--yellow)">${type} — 5 год вперед</h2>`;
-  const gen=new Date().toLocaleString("uk-UA");
+function showForecast(){
+  const k=LIMITS[TYPE].k;
+  const coef=windCoef(ALT,k);
 
-  for(let h=0;h<5;h++){
-    const H=DATA.hourly[h];
+  let html=`<h2>${TYPE} | ${ALT===0?"На землі":ALT+" м"} — 5 год вперед</h2>`;
+
+  for(let i=0;i<5;i++){
+    const H=DATA.hourly[i];
+    const wind=H.wind_speed*coef;
+    const gust=(H.wind_gust||H.wind_speed)*coef;
+    const rain=H.rain?.["1h"]||0;
+    const vis=H.visibility||10000;
+    const deg=H.wind_deg;
+    const s=status(TYPE,wind,gust,rain,vis);
     const t=new Date(H.dt*1000).toLocaleTimeString("uk-UA",{hour:"2-digit",minute:"2-digit"});
 
-    ALT[type].forEach(a=>{
-      const wind=H.wind_speed*a.m;
-      const gust=(H.wind_gust||H.wind_speed)*a.m;
-      const rain=H.rain?.["1h"]||0;
-      const vis=H.visibility||10000;
-      const s=status(type,wind,gust,rain,vis);
-
-      html+=`
-      <div class="card ${s}">
-        <div class="time">${t} | ${a.h} м</div>
-        <div class="small">
-          🌡 ${H.temp.toFixed(1)}°C<br>
-          💨 Вітер: ${wind.toFixed(1)} м/с<br>
-          🌪 Пориви: ${gust.toFixed(1)} м/с<br>
-          🌧 Опади: ${rain>0?rain+" мм":"—"}<br>
-          <b>${s==="critical"?"🔴 НЕ МОЖНА":s==="warn"?"🟡 ОБМЕЖЕНО":"🟢 МОЖНА"}</b>
-        </div>
-      </div>`;
-    });
+    html+=`
+    <div class="card ${s}">
+      <div class="time">${t}</div>
+      <div class="small">
+        🌡 ${H.temp.toFixed(1)}°C<br>
+        💨 Вітер: ${wind.toFixed(1)} м/с<br>
+        🌪 Пориви: ${gust.toFixed(1)} м/с<br>
+        🧭 Напрямок: ${deg}° ${windArrow(deg)}<br>
+        🌧 Опади: ${rain>0?rain+" мм":"—"}<br>
+        <b>${s==="critical"?"🔴 НЕ МОЖНА":s==="warn"?"🟡 ОБМЕЖЕНО":"🟢 МОЖНА"}</b>
+      </div>
+    </div>`;
   }
 
-  LAST_HTML=`<h2>${type}</h2><div class="small">🕒 ${gen}</div>`+html;
+  LAST_HTML=html;
   document.getElementById("out").innerHTML=html;
 }
 
 function savePDF(){
   const w=window.open("");
-  w.document.write(`<html><head><style>${document.querySelector("style").innerHTML}</style></head><body>${LAST_HTML}</body></html>`);
+  w.document.write(
+    `<html><head><style>${document.querySelector("style").innerHTML}</style></head><body>${LAST_HTML}</body></html>`
+  );
   w.print();
 }
 </script>
